@@ -1,0 +1,164 @@
+import { DiscordRequest, CommandOptionType } from './utils.js';
+import { Servers } from './enums.js';
+
+export async function DeleteGuildCommands(appId, guildId) {
+  const endpoint = `applications/${appId}/guilds/${guildId}/commands`;
+  const res = await DiscordRequest(endpoint, { method: 'GET' });
+  const data = await res.json();
+  
+  await data.forEach(async (c) => {
+       // API endpoint to delete command
+    const endpoint = `applications/${appId}/guilds/${guildId}/commands/${c['id']}`;
+
+    try {
+      await DiscordRequest(endpoint, {method: 'DELETE'});
+    } catch (err) {
+      console.error(err);
+    }
+  });
+}
+
+export async function HasCommands(appId, guildId, commands) {
+  if (appId === '') return;
+
+  // API endpoint to get and post guild commands
+  var endpoint = `applications/${appId}/commands`;
+  
+  if (process.env.ENVIROMENT == "DEBUG") {
+    endpoint = `applications/${appId}/guilds/${guildId}/commands`;
+  }
+  
+  try {
+    const res = await DiscordRequest(endpoint, { method: 'GET' });
+    const data = await res.json();
+
+    if (data) {
+      const usedCommands = commands.map((c) => c['name']);
+      await data.forEach(async (c) => {
+        if(!usedCommands.includes(c['name'])) {
+          await DeleteGlobalCommand(appId, guildId, c['id']);
+        }
+      });
+      
+      commands.forEach((c) => HasGlobalCommand(appId, guildId, data, c));
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Checks for a command
+async function HasGlobalCommand(appId, guildId, commands, command) {
+  try {
+    const installedNames = commands.map((c) => c['name']);
+
+    // This is just matching on the name, so it's not good for updates
+    if (!installedNames.includes(command['name'])) {
+      console.log(`Installing "${command['name']}"`);
+      InstallGlobalCommand(appId, guildId, command);
+    } else {
+      console.log(`"${command['name']}" command already installed`);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Deletes a Guild command
+async function DeleteGlobalCommand(appId, guildId, command) {
+  // API endpoint to get and post guild commands
+  var endpoint = `applications/${appId}/commands/${command}`;
+  
+  if (process.env.ENVIROMENT == "DEBUG") {
+    endpoint = `applications/${appId}/guilds/${guildId}/commands/${command}`;
+  }
+  
+  try {
+    await DiscordRequest(endpoint, {method: 'DELETE'});
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Installs a command
+export async function InstallGlobalCommand(appId, guildId, command) {
+  // API endpoint to get and post guild commands
+  var endpoint = `applications/${appId}/commands`;
+  
+  if (process.env.ENVIROMENT == "DEBUG") {
+    endpoint = `applications/${appId}/guilds/${guildId}/commands`;
+  }
+  
+  // install command
+  try {
+    await DiscordRequest(endpoint, { method: 'POST', body: command });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Myo tour command
+export const TOUR_COMMAND = {
+  name: 'tour',
+  description: 'Checks the time until the next myo tour.',
+  type: 1, // CHAT_INPUT
+  options: [
+    {
+      name: 'server',
+      type: CommandOptionType.Integer,
+      description: 'The server that you want to get the tour time.',
+      choices: Object.entries(Servers).map(([server, val]) => {
+        return {
+          name: server,
+          value: val
+        };
+      }),
+      required: true
+    }
+  ]
+};
+
+export const SET_TOUR_COMMAND = {
+  name: 'set_tour',
+  description: 'Sets the time that the myo tour has/will occur in.',
+  type: 1, // CHAT_INPUT
+  options: [
+    {
+      name: 'server',
+      type: CommandOptionType.Integer, // INTEGER
+      description: 'The server that you want to set the tour time.',
+      choices: Object.entries(Servers).map(([server, val]) => {
+        return {
+          name: server,
+          value: val
+        };
+      }),
+      required: true
+    },
+    {
+      name: 'time',
+      type: CommandOptionType.String,// STRING
+      description: 'The time the tour has/will occur. (hh:mm)',
+    }
+  ]
+}
+
+export const SET_ZONE_COMMAND = {
+  name: 'set_zone',
+  description: 'Sets your UTC offset on the server for automatic conversion when calling /tour command.',
+  type: 1,
+  options: [
+    {
+      name: 'zone',
+      type: CommandOptionType.Integer, // INTEGER,
+      description: 'The offset from UTC (between -11 and +14)',
+      required: true
+    }
+  ]
+}
+// Time Zone
+export const TIME_ZONE_COMMAND = {
+  name: 'time_zone',
+  description: 'Checks the time zone you are in.',
+  type: 1, //CHAT INPUT
+};
