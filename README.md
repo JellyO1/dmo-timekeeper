@@ -1,95 +1,26 @@
-# Getting Started app for Discord
+# DMO Timekeeper
 
-This project contains a basic rock-paper-scissors-style Discord app written in JavaScript, built for the [getting started guide](https://discord.com/developers/docs/getting-started).
+This bot can be used to get the next time of a certain world boss on Digimon Masters Online.
+Since the discord API doesn't provide any way to know the user timezone this bot uses UTC and allows you to set your offset.
 
-![Demo of app](https://raw.githubusercontent.com/discord/discord-example-app/main/assets/getting-started-demo.gif)
+## Commands
 
-## Project structure
-Below is a basic overview of the project structure:
+### Setting your timezone
 
-```
-├── examples    -> short, feature-specific sample apps
-│   ├── app.js  -> finished app
-│   ├── button.js
-│   ├── command.js
-│   ├── modal.js
-│   ├── selectMenu.js
-├── .env.sample -> sample .env file
-├── app.js      -> main entrypoint for app
-├── commands.js -> slash command payloads + helpers
-├── game.js     -> logic specific to RPS
-├── utils.js    -> utility functions and enums
-├── package.json
-├── README.md
-└── .gitignore
-```
+/set_zone <offset>: Sets your UTC offset, this can be between -12 and 14
 
-## Running app locally
+Examples:
 
-Before you start, you'll need to [create a Discord app](https://discord.com/developers/applications) with the proper permissions:
-- `applications.commands`
-- `bot` (with Send Messages and Use Slash Commands enabled)
+/set_zone 1 - Sets your timezone to UTC+1;
+/set_zone -11 - Sets your timezone to UTC-11;
 
-Configuring the app is covered in detail in [the getting started guide](https://discord.com/developers/docs/getting-started).
-### Setup project
+### Getting the next Tour time
 
-First clone the project:
-```
-git clone https://github.com/discord/discord-example-app.git
-```
+/tour <server> - Retrieves the next Myotismon tour starting time.
 
-Then navigate to its directory and install dependencies:
-```
-cd discord-getting-started
-npm install
-```
-### Get app credentials
+### Setting the Tour time
 
-Fetch the credentials from your app's settings and add them to a `.env` file (see `.env.sample` for an example). You'll need your app ID (`APP_ID`), server ID (`GUILD_ID`), bot token (`DISCORD_TOKEN`), and public key (`PUBLIC_KEY`).
+There is two ways to set when the tour next or last time.
 
-Fetching credentials is covered in detail in [the getting started guide](https://discord.com/developers/docs/getting-started).
-
-### Run the app
-
-After your credentials are added, go ahead and run the app:
-
-```
-node app.js
-```
-
-> ⚙️ A package [like `nodemon`](https://github.com/remy/nodemon), which watches for local changes and restarts your app, may be helpful while locally developing.
-
-### Set up interactivity
-
-The project needs a public endpoint where Discord can send requests. To develop and test locally, you can use something like [`ngrok`](https://ngrok.com/) to tunnel HTTP traffic.
-
-Install ngrok if you haven't already, then start listening on port `3000`:
-
-```
-ngrok http 3000
-```
-
-You should see your connection open:
-
-```
-Tunnel Status                 online
-Version                       2.0/2.0
-Web Interface                 http://127.0.0.1:4040
-Forwarding                    http://1234-someurl.ngrok.io -> localhost:3000
-Forwarding                    https://1234-someurl.ngrok.io -> localhost:3000
-
-Connections                  ttl     opn     rt1     rt5     p50     p90
-                              0       0       0.00    0.00    0.00    0.00
-```
-
-Copy the forwarding address that starts with `https`, in this case `https://1234-someurl.ngrok.io`, then go to your [app's settings](https://discord.com/developers/applications).
-
-On the **General Information** tab, there will be an **Interactions Endpoint URL**. Paste your ngrok address there, and append `/interactions` to it (`https://1234-someurl.ngrok.io/interactions` in the example).
-
-Click **Save Changes**, and your app should be ready to run 🚀
-
-## Other resources
-- Read **[the documentation](https://discord.com/developers/docs/intro)** for in-depth information about API features.
-- Browse the `examples/` folder in this project for smaller, feature-specific code examples
-- Join the **[Discord Developers server](https://discord.gg/discord-developers)** to ask questions about the API, attend events hosted by the Discord API team, and interact with other devs.
-- Check out **[community resources](https://discord.com/developers/docs/topics/community-resources#community-resources)** for language-specific tools maintained by community members.
+/set_tour <server> - Sets the last tour time in the <server> to the current time.
+/set_tour <server> <time(hh:mm)> - Sets the next or last tour time to <time> in the <server>.
