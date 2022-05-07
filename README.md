@@ -1,6 +1,7 @@
 # DMO Timekeeper
 
 This bot can be used to get the next time of a certain world boss on Digimon Masters Online.
+
 Since the discord API doesn't provide any way to know the user timezone this bot uses UTC and allows you to set your offset.
 
 ## Commands
@@ -12,6 +13,7 @@ Since the discord API doesn't provide any way to know the user timezone this bot
 Examples:
 
 /set_zone 1 - Sets your timezone to UTC+1;
+
 /set_zone -11 - Sets your timezone to UTC-11;
 
 ### Getting the next Tour time
