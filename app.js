@@ -8,21 +8,32 @@ import {
   MessageComponentTypes,
   ButtonStyleTypes,
 } from "discord-interactions";
-import { VerifyDiscordRequest, DiscordRequest } from "./utils.js";
-import { TOUR_COMMAND, SET_TOUR_COMMAND, SET_ZONE_COMMAND, TIME_ZONE_COMMAND, HasCommands, DeleteGuildCommands } from "./commands.js";
-import { SetupDatabase, GetZone, SetZone, GetMonsterTimes, SetMonsterTime } from './database.js';
+import { VerifyDiscordRequest, DiscordRequest, formatZone } from "./utils.js";
+import { TOUR_COMMAND, SET_TOUR_COMMAND, SET_ZONE_COMMAND, TIME_ZONE_COMMAND, HasCommands, DeleteCommands, NOTIFY_COMMAND, DMUser } from "./commands.js";
+import { SetupDatabase, GetZone, SetZone, GetMonsterTimes, SetMonsterTime, SetNotification, GetNotification } from './database.js';
 import { Monsters, Servers } from './enums.js';
 
 const monsterTimers = {};
 
 // Setup database
-SetupDatabase().then(async function() {
+SetupDatabase().then(async function () {
   const data = await GetMonsterTimes();
-  
+
   data.forEach((row) => {
     monsterTimers[row.server] = {}
-    monsterTimers[row.server][row.id] = moment(row.last_time);
+    monsterTimers[row.server][row.id] = {
+      time: moment(row.last_time)
+    }
+    
   });
+
+  for (let [serverKey, serverMonsters] of Object.entries(monsterTimers)) {
+    for (let [monsterKey, monsterData] of Object.entries(serverMonsters)) {
+      setNotificationTimers(serverKey, monsterKey);
+    }
+  }
+
+  console.log(monsterTimers);
 });
 
 // Create an express app
@@ -57,23 +68,23 @@ app.post("/interactions", async function (req, res) {
 
     switch (name) {
       case "tour": {
-        tour(data, member, res);
+        await tour(data, member, res);
         break;
       }
       case "set_tour": {
-        setTour(data, member, res);
+        await setTour(data, member, res);
         break;
       }
       case "set_zone": {
-        setZone(data, member, res);
+        await setZone(data, member, res);
         break;
       }
       case "time_zone": {
-        var content = "";
-        
-        var userId = member.user.id;
-        var zoneOffset = data.options[0].value;
-        
+        let content = "";
+
+        const userId = member.user.id;
+        const zoneOffset = data.options[0].value;
+
         await SetZone(userId, zoneOffset);
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -81,6 +92,10 @@ app.post("/interactions", async function (req, res) {
             content: "Your timezone is  " + zoneOffset + "."
           }
         });
+        break;
+      }
+      case "notify": {
+        await notify(data, member, res);
         break;
       }
     }
@@ -91,34 +106,28 @@ app.listen(3000, () => {
   console.log("Listening on port 3000");
 
   // Check if guild commands from commands.json are installed (if not, install them)
-  HasCommands(process.env.APP_ID, process.env.GUILD_ID, [TOUR_COMMAND, SET_TOUR_COMMAND, SET_ZONE_COMMAND]);
+  HasCommands(process.env.APP_ID, process.env.GUILD_ID, [TOUR_COMMAND, SET_TOUR_COMMAND, SET_ZONE_COMMAND, NOTIFY_COMMAND]);
 });
 
 async function tour(data, member, res) {
   const server = data.options.find((v) => v.name === 'server').value;
 
-  if (!Monsters.Myotismon in monsterTimers[server]) {
+  if (!(server in monsterTimers) || !(Monsters.Myotismon in monsterTimers[server])) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
         content:
           "The last/next known time is not set, please set it with /set_tour.",
-          ephemeral: true,
+        ephemeral: true,
       },
     });
   }
 
-  var zone = parseInt(await GetZone(member.user.id));
-  var content = "The next Myotismon tour will start at ";
-  var now = moment.utc();
-  var next = moment(monsterTimers[server][Monsters.Myotismon]).utcOffset(zone);
-
-  if (next < now) {
-      var diffHours = moment.duration(now.diff(next)).asHours();
-      var times = Math.ceil(diffHours / 2);
-
-      next.add(2 * times, 'h');
-  }
+  const zone = parseInt(await GetZone(member.user.id));
+  let content = "The next Myotismon tour will start at ";
+  const now = moment.utc();
+  const last = moment(monsterTimers[server][Monsters.Myotismon].time).utcOffset(zone);
+  const next = nextTimeOnHourInterval(last, zone, 2);
 
   content += next.format("HH:mm") + " UTC" + formatZone(zone) + ".";
 
@@ -133,28 +142,30 @@ async function tour(data, member, res) {
 }
 
 async function setTour(data, member, res) {
-  var content = "";
-  var zoneOffset = parseInt(await GetZone(member.user.id));
+  let content = "";
+  let zoneOffset = parseInt(await GetZone(member.user.id));
 
   const server = data.options.find((v) => v.name === 'server').value;
 
-  if(data.options.find((v) => v.name === 'time') === undefined) {
-    monsterTimers[server][Monsters.Myotismon] = moment.utc();
+  if (data.options.find((v) => v.name === 'time') === undefined) {
+    monsterTimers[server][Monsters.Myotismon].time = moment.utc();
     content = "Set Myotismon tour time to current time."
   } else {
-    
+
     const time = data.options.find((v) => v.name === 'time').value;
     const parsedTime = moment.parseZone(time + " " + formatZone(zoneOffset), "HH:mm ZZ", true);
 
-    if(!parsedTime.isValid()) {
+    if (!parsedTime.isValid()) {
       content = "Invalid time.";
     } else {
-      monsterTimers[server][Monsters.Myotismon] = moment.utc(parsedTime);
+      monsterTimers[server][Monsters.Myotismon].time = moment.utc(parsedTime);
+      console.log(monsterTimers[server][Monsters.Myotismon].time.format());
       content = "Set Myotismon tour time to " + parsedTime.format("HH:mm") + ".";
     }
   }
-  
-  await SetMonsterTime(Monsters.Myotismon, server, monsterTimers[server][Monsters.Myotismon].format());
+
+  await SetMonsterTime(Monsters.Myotismon, server, monsterTimers[server][Monsters.Myotismon].time.format());
+  setNotificationTimers(Monsters.Myotismon, server);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -165,25 +176,25 @@ async function setTour(data, member, res) {
 }
 
 async function setZone(data, member, res) {
-  var content = "";
-        
-  var userId = member.user.id;
-  var zoneOffset = data.options[0].value;
+  let content = "";
 
-  if(zoneOffset < -11)
-    zoneOffset = -11;
+  let userId = member.user.id;
+  let zoneOffset = data.options[0].value;
+
+  if (zoneOffset < -12)
+    zoneOffset = -12;
   else if (zoneOffset > 14)
     zoneOffset = 14;
 
   await SetZone(userId, zoneOffset);
-  
-  var content = "Set your timezone to UTC";
-  
-  if(zoneOffset > 0)
+
+  content = "Set your timezone to UTC";
+
+  if (zoneOffset > 0)
     content += "+" + zoneOffset;
   else
     content += "-" + zoneOffset;
-  
+
   content += ".";
 
   return res.send({
@@ -194,22 +205,82 @@ async function setZone(data, member, res) {
   });
 }
 
-function formatZone(zone) {  
-  var result = "00".split("");
-  var zoneString = String(zone);
-  for(var j = 1; j >= 0; j--) {
-    if(j < zoneString.length)
-      continue;
-    
-    result[j] = zoneString[j - zoneString.length];
+async function notify(data, member, res) {
+  const server = data.options.find((v) => v.name === 'server').value;
+  const monster = data.options.find((v) => v.name === 'monster').value;
+  let notifyState = await SetNotification(server, monster);
+  let content = `Set notification in server ${Object.keys(Servers)[server]} for ${Object.keys(Monsters)[monster]} to ${notifyState}.`;
+
+
+  return res.send({
+    type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+    data: {
+      content: content
+    }
+  });
+}
+
+async function executeNotifications(server, monster) {
+  console.log('notifying for ' + Object.keys(Servers)[server] + ', monster ' + Object.keys(Monsters)[monster]);
+
+  let res = await GetNotification();
+
+  for(var row in res) {
+    DMUser(row.user_id, Object.keys(Monsters)[monster] + " starts in 10 minutes.");
   }
-  
-  result = result.join("");
-  
-  if(zone < 0)
-    result = "-" + result;
+
+  return;
+}
+
+function nextTimeOnHourInterval(last_time, offset = null, hourInterval) {
+  const now = moment.utc();
+  let last_moment;
+
+  if (offset)
+    last_moment = moment(last_time).utcOffset(offset);
   else
-    result = "+" + result;
-  
-  return result + ":00";
+    last_moment = moment(last_time).utc();
+
+  if (last_moment < now) {
+    const diffHours = moment.duration(now.diff(last_moment)).asHours();
+    const times = Math.ceil(diffHours / 2);
+
+    last_moment.add(hourInterval * times, 'h');
+  }
+
+  return last_moment;
+}
+
+function setNotificationTimers(server, monster) {
+  const monsterData = monsterTimers[server][monster];
+
+  const next = nextTimeOnHourInterval(monsterData.time, null, 2).subtract(10, 'm');
+  let timeoutInterval = Math.max(0, next.diff(moment.utc()));
+
+  console.log(monster + " timeout:" + timeoutInterval);
+
+  if('timeout' in monsterData)
+    clearTimeout(monsterData.timeout);
+
+  if('interval' in monsterData)
+    clearInterval(monsterData.interval);
+
+  let monsterTimeout = setTimeout(() => {
+    executeNotifications(server, monster);
+
+    // Notify every 1h
+    let notificationInterval = 60 * 60 * 1000;
+    if (monster === Monsters.Myotismon) {
+      // Notify every 1h:50m
+      notificationInterval = 110 * 60 * 1000;
+    }
+
+    let monsterInterval = setInterval(() => {
+      executeNotifications(server, monster);
+    }, notificationInterval);
+
+    monsterTimers[server][monster].interval = monsterInterval;
+  }, timeoutInterval);
+
+  monsterTimers[server][monster].timeout = monsterTimeout;
 }

@@ -55,3 +55,23 @@ export async function DiscordRequest(endpoint, options) {
 export function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
+
+export function formatZone(zone) {
+  let result = "00".split("");
+  let zoneString = String(zone);
+  for (var j = 1; j >= 0; j--) {
+    if (j < zoneString.length)
+      continue;
+
+    result[j] = zoneString[j - zoneString.length];
+  }
+
+  result = result.join("");
+
+  if (zone < 0)
+    result = "-" + result;
+  else
+    result = "+" + result;
+
+  return result + ":00";
+}
