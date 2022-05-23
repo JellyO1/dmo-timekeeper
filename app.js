@@ -153,7 +153,7 @@ async function setTour(data, member, res) {
     } else {
       setMonsterTime(server, Monsters.Myotismon, moment.utc(parsedTime));
       console.log(getMonsterTime(server, Monsters.Myotismon).format());
-      content = "Set Myotismon tour time to " + parsedTime.format("HH:mm") + ".";
+      content = "Set Myotismon tour time to " + parsedTime.format("HH:mm") + ` UTC${zoneOffset<0 ? '' : '+'}${zoneOffset}.`;
     }
   }
 

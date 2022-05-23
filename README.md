@@ -30,3 +30,8 @@ The first sets the last tour time in the **server** to the current time.
     /set_tour [server] [time(hh:mm)]
 
 ## notify
+
+This command enables the notifications for the channel where it is called.  
+It takes the **server** and **monster** on which to notify.
+
+    /notify [server] [monster]
