@@ -133,16 +133,11 @@ export async function InstallGlobalCommand(appId, guildId, command) {
   }
 }
 
-export async function DMUser(userId, message) {
-  let channel_endpoint = `/users/@me/channels`;
+export async function SendChannelMessage(channelId, message) {
+  let channel_endpoint = `/channels/${channelId}/messages`;
 
   try {
-    var channel = await DiscordRequest(channel_endpoint, { method: 'POST', body: { recepient_id: userId } });
-
-    let message_endpoint = `/channels/${channel.id}/messages`;
-
-    await DiscordRequest(message_endpoint, { method: 'POST', body: { content: message }});
-
+    await DiscordRequest(channel_endpoint, { method: 'POST', body: { content: message } });
   } catch (err) {
     console.error(err);
   }

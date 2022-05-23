@@ -9,8 +9,8 @@ import {
   ButtonStyleTypes,
 } from "discord-interactions";
 import { VerifyDiscordRequest, DiscordRequest, formatZone } from "./utils.js";
-import { TOUR_COMMAND, SET_TOUR_COMMAND, SET_ZONE_COMMAND, TIME_ZONE_COMMAND, HasCommands, DeleteCommands, NOTIFY_COMMAND, DMUser } from "./commands.js";
-import { SetupDatabase, GetZone, SetZone, GetMonsterTimes, SetMonsterTime, SetNotification, GetNotification } from './database.js';
+import { TOUR_COMMAND, SET_TOUR_COMMAND, SET_ZONE_COMMAND, TIME_ZONE_COMMAND, HasCommands, DeleteCommands, NOTIFY_COMMAND, SendChannelMessage } from "./commands.js";
+import { SetupDatabase, GetZone, SetZone, GetMonsterTimes, SetMonsterTime, SetNotification, GetNotifications } from './database.js';
 import { Monsters, Servers } from './enums.js';
 
 const monsterTimers = {};
@@ -20,11 +20,7 @@ SetupDatabase().then(async function () {
   const data = await GetMonsterTimes();
 
   data.forEach((row) => {
-    monsterTimers[row.server] = {}
-    monsterTimers[row.server][row.id] = {
-      time: moment(row.last_time)
-    }
-    
+    setMonsterTime(row.server, row.id, moment(row.last_time));
   });
 
   for (let [serverKey, serverMonsters] of Object.entries(monsterTimers)) {
@@ -32,8 +28,6 @@ SetupDatabase().then(async function () {
       setNotificationTimers(serverKey, monsterKey);
     }
   }
-
-  console.log(monsterTimers);
 });
 
 // Create an express app
@@ -50,7 +44,7 @@ app.get("/", async function (req, res) {
  */
 app.post("/interactions", async function (req, res) {
   // Interaction type and data
-  const { type, id, data, member } = req.body;
+  const { type, id, data, member, channel_id } = req.body;
 
   /**
    * Handle verification requests
@@ -95,7 +89,7 @@ app.post("/interactions", async function (req, res) {
         break;
       }
       case "notify": {
-        await notify(data, member, res);
+        await notify(data, channel_id, res);
         break;
       }
     }
@@ -111,8 +105,8 @@ app.listen(3000, () => {
 
 async function tour(data, member, res) {
   const server = data.options.find((v) => v.name === 'server').value;
-
-  if (!(server in monsterTimers) || !(Monsters.Myotismon in monsterTimers[server])) {
+  const myoTime = GetMonsterTimes(server, Monsters.Myotismon);
+  if (myoTime == null) {
     return res.send({
       type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
       data: {
@@ -125,8 +119,7 @@ async function tour(data, member, res) {
 
   const zone = parseInt(await GetZone(member.user.id));
   let content = "The next Myotismon tour will start at ";
-  const now = moment.utc();
-  const last = moment(monsterTimers[server][Monsters.Myotismon].time).utcOffset(zone);
+  const last = moment(myoTime).utcOffset(zone);
   const next = nextTimeOnHourInterval(last, zone, 2);
 
   content += next.format("HH:mm") + " UTC" + formatZone(zone) + ".";
@@ -148,7 +141,7 @@ async function setTour(data, member, res) {
   const server = data.options.find((v) => v.name === 'server').value;
 
   if (data.options.find((v) => v.name === 'time') === undefined) {
-    monsterTimers[server][Monsters.Myotismon].time = moment.utc();
+    setMonsterTime(server, Monsters.Myotismon, moment.utc());
     content = "Set Myotismon tour time to current time."
   } else {
 
@@ -158,14 +151,14 @@ async function setTour(data, member, res) {
     if (!parsedTime.isValid()) {
       content = "Invalid time.";
     } else {
-      monsterTimers[server][Monsters.Myotismon].time = moment.utc(parsedTime);
-      console.log(monsterTimers[server][Monsters.Myotismon].time.format());
+      setMonsterTime(server, Monsters.Myotismon, moment.utc(parsedTime));
+      console.log(getMonsterTime(server, Monsters.Myotismon).format());
       content = "Set Myotismon tour time to " + parsedTime.format("HH:mm") + ".";
     }
   }
 
-  await SetMonsterTime(Monsters.Myotismon, server, monsterTimers[server][Monsters.Myotismon].time.format());
-  setNotificationTimers(Monsters.Myotismon, server);
+  await SetMonsterTime(Monsters.Myotismon, server, getMonsterTime(server, Monsters.Myotismon).format());
+  setNotificationTimers(server, Monsters.Myotismon);
 
   return res.send({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -205,11 +198,11 @@ async function setZone(data, member, res) {
   });
 }
 
-async function notify(data, member, res) {
+async function notify(data, channel_id, res) {
   const server = data.options.find((v) => v.name === 'server').value;
   const monster = data.options.find((v) => v.name === 'monster').value;
-  let notifyState = await SetNotification(server, monster);
-  let content = `Set notification in server ${Object.keys(Servers)[server]} for ${Object.keys(Monsters)[monster]} to ${notifyState}.`;
+  let notifyState = (await SetNotification(channel_id, server, monster)) ? "enabled" : "disabled";
+  let content = `Set notification in the current channel for the server ${Object.keys(Servers)[server]}, ${Object.keys(Monsters)[monster]} to ${notifyState}.`;
 
 
   return res.send({
@@ -221,12 +214,12 @@ async function notify(data, member, res) {
 }
 
 async function executeNotifications(server, monster) {
-  console.log('notifying for ' + Object.keys(Servers)[server] + ', monster ' + Object.keys(Monsters)[monster]);
+  console.log('Notifying for ' + Object.keys(Servers)[server] + ', monster ' + Object.keys(Monsters)[monster]);
 
-  let res = await GetNotification();
+  let res = await GetNotifications(server, monster);
 
-  for(var row in res) {
-    DMUser(row.user_id, Object.keys(Monsters)[monster] + " starts in 10 minutes.");
+  for(let key in res) {
+    SendChannelMessage(res[key].channel_id, Object.keys(Monsters)[monster] + " starts in 10 minutes.");
   }
 
   return;
@@ -283,4 +276,18 @@ function setNotificationTimers(server, monster) {
   }, timeoutInterval);
 
   monsterTimers[server][monster].timeout = monsterTimeout;
+}
+
+function setMonsterTime(server, monster, time) {
+  if(!(server in monsterTimers))
+    monsterTimers[server] = {}
+
+  if (!(monster in monsterTimers[server]))
+    monsterTimers[server][monster] = {};
+
+  monsterTimers[server][monster].time = time;
+}
+
+function getMonsterTime(server, monster) {
+  return monsterTimers[server][monster].time;
 }

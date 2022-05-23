@@ -27,19 +27,23 @@ export async function SetupDatabase() {
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS monster_times_notifications (
-      user_id VARCHAR NOT NULL,
-      monster_time_id NUMBER NOT NULL,
+      channel_id VARCHAR NOT NULL,
+      server NUMBER NOT NULL,
+      monster NUMBER NOT NULL,
       notify BOOLEAN NOT NULL,
-      PRIMARY KEY (user_id, monster_time_id)
-      FOREIGN KEY (monster_time_id) references monster_times(id)
+      PRIMARY KEY (channel_id, server, monster)
+      FOREIGN KEY (monster, server) references monster_times(id, server)
     );
   `);
 }
 
 export async function GetZone(userId) {
   const result = await db.get('SELECT * FROM user_zones WHERE user_id = ?', userId);
-  
-  return result.zone ?? 0;
+
+  if(result == null)
+    return 0;
+
+  return result.zone;
 }
 
 export async function GetMonsterTimes(server) {
@@ -54,19 +58,24 @@ export async function SetZone(userId, zone) {
   `, userId, zone);
 }
 
-export async function SetMonsterTime(id, server, last_time) {
+export async function SetMonsterTime(id, server, lastTime) {
   const result = await db.run(`
     INSERT OR REPLACE INTO monster_times(id, server, last_time) VALUES (?, ?, ?)
-  `, id, server, last_time);
+  `, id, server, lastTime);
 }
 
-export async function GetNotification() {
-  const result = await db.run(`SELECT * FROM monster_times_notifications WHERE notify is TRUE`);
+export async function GetNotifications() {
+  const result = await db.all(`SELECT * FROM monster_times_notifications WHERE notify is TRUE`);
   return result;
 }
 
-export async function SetNotification(userId, monster_time_id) {
-  let result = await db.get('SELECT * FROM monster_times_notifications WHERE user_id = ? AND monster_time_id = ?', userId, monster_time_id);
+export async function GetNotification(server, monster) {
+  const result = await db.get('SELECT * FROM monster_tiems_notifications WHERE notify is TRUE AND server = ? AND monster = ?', server, monster);
+  return result;
+}
+
+export async function SetNotification(channelId, server, monster) {
+  let result = await db.get('SELECT * FROM monster_times_notifications WHERE channel_id = ? AND server = ? AND monster = ?', channelId, server, monster);
 
   let notify = true;
   if(result != null) {
@@ -74,8 +83,8 @@ export async function SetNotification(userId, monster_time_id) {
   }
 
   result = await db.run(`
-    INSERT OR REPLACE INTO monster_times_notifications(user_id, monster_time_id, notify) VALUES (?, ?, ?)
-  `, userId, monster_time_id, notify);
+    INSERT OR REPLACE INTO monster_times_notifications(channel_id, server, monster, notify) VALUES (?, ?, ?, ?)
+  `, channelId, server, monster, notify);
 
   return notify;
 }
